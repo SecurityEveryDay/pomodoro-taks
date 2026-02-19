@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}Projetos — PomodoroFoco{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Projetos</h1>
+    <p class="page-subtitle">Organize suas tarefas por projetos</p>
+  </div>
+  <button class="btn btn-primary" onclick="openModal('modal-create')">+ Novo Projeto</button>
+</div>
+
+<div class="page-content">
+  {% if projects %}
+  <div class="grid-3">
+    {% for p in projects %}
+    <div class="card">
+      <div class="card-header" style="border-left: 4px solid {{ p.color }}; padding-left: 20px;">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div class="color-dot" style="background:{{ p.color }};width:14px;height:14px"></div>
+          <span class="card-title" style="font-size:16px">{{ p.name }}</span>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-ghost btn-sm" onclick="editProject({{ p.id }}, '{{ p.name }}', '{{ p.color }}')">✏️</button>
+          <form method="POST" action="/projetos/{{ p.id }}/excluir" style="margin:0" onsubmit="return confirm('Excluir projeto? As tarefas serão mantidas.')">
+            <button type="submit" class="btn btn-danger btn-sm">🗑</button>
+          </form>
+        </div>
+      </div>
+      <div class="card-body">
+        <div style="display:flex;justify-content:space-between;margin-bottom:12px">
+          <div style="text-align:center">
+            <div style="font-size:24px;font-weight:700;font-family:'Space Mono',monospace;color:var(--text)">{{ p.total_tasks or 0 }}</div>
+            <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px">Tarefas</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:24px;font-weight:700;font-family:'Space Mono',monospace;color:var(--green)">{{ p.completed_tasks or 0 }}</div>
+            <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px">Concluídas</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:24px;font-weight:700;font-family:'Space Mono',monospace;color:var(--red)">{{ p.total_pomodoros or 0 }}</div>
+            <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px">🍅</div>
+          </div>
+        </div>
+        {% if p.total_tasks and p.total_tasks > 0 %}
+        {% set pct = (p.completed_tasks or 0) / p.total_tasks * 100 %}
+        <div class="progress">
+          <div class="progress-bar green" style="width:{{ pct }}%"></div>
+        </div>
+        <div style="font-size:11px;color:var(--text3);margin-top:6px;text-align:right">{{ "%.0f"|format(pct) }}% completo</div>
+        {% endif %}
+        <a href="/tarefas?projeto={{ p.id }}" class="btn btn-secondary btn-sm w-full" style="margin-top:12px;justify-content:center">Ver Tarefas</a>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="icon">📁</div>
+    <h3>Nenhum projeto criado</h3>
+    <p>Organize suas tarefas em projetos para melhor visibilidade</p>
+    <button class="btn btn-primary" style="margin-top:16px" onclick="openModal('modal-create')">+ Criar Projeto</button>
+  </div>
+  {% endif %}
+</div>
+
+<!-- CREATE -->
+<div class="modal-overlay" id="modal-create">
+  <div class="modal">
+    <div class="modal-title">Novo Projeto</div>
+    <form method="POST" action="/projetos/novo">
+      <div class="form-group">
+        <label class="form-label">Nome *</label>
+        <input type="text" name="name" class="form-control" placeholder="Ex: Trabalho, Estudos..." required autofocus>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Cor</label>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">
+          {% for color in ['#e63946','#f77f00','#ffd166','#2dc653','#4895ef','#7b2d8b','#ef476f','#06d6a0'] %}
+          <label style="cursor:pointer">
+            <input type="radio" name="color" value="{{ color }}" {% if loop.first %}checked{% endif %} style="display:none">
+            <div style="width:28px;height:28px;border-radius:50%;background:{{ color }};transition:transform 0.1s" onclick="this.parentNode.querySelector('input').checked=true;document.querySelectorAll('.color-radio').forEach(e=>e.style.outline='none');this.style.outline='3px solid var(--text)';" class="color-radio"></div>
+          </label>
+          {% endfor %}
+        </div>
+        <input type="text" name="color" id="custom-color" class="form-control" placeholder="#000000" style="margin-top:10px;font-family:'Space Mono',monospace">
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-create')">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Criar Projeto</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- EDIT -->
+<div class="modal-overlay" id="modal-edit">
+  <div class="modal">
+    <div class="modal-title">Editar Projeto</div>
+    <form method="POST" id="editForm">
+      <div class="form-group">
+        <label class="form-label">Nome *</label>
+        <input type="text" name="name" id="edit-name" class="form-control" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Cor</label>
+        <input type="text" name="color" id="edit-color" class="form-control" style="font-family:'Space Mono',monospace">
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-edit')">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function openModal(id) { document.getElementById(id).classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+document.querySelectorAll('.modal-overlay').forEach(el => {
+  el.addEventListener('click', e => { if (e.target === el) el.classList.remove('active'); });
+});
+function editProject(id, name, color) {
+  document.getElementById('edit-name').value = name;
+  document.getElementById('edit-color').value = color;
+  document.getElementById('editForm').action = '/projetos/' + id + '/editar';
+  openModal('modal-edit');
+}
+</script>
+{% endblock %}

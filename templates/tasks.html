@@ -1,0 +1,378 @@
+{% extends "base.html" %}
+{% block title %}Tarefas — PomodoroFoco{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Tarefas</h1>
+    <p class="page-subtitle">Organize seu trabalho e planeje seus pomodoros</p>
+  </div>
+  <button class="btn btn-primary" onclick="openModal('modal-create')">+ Nova Tarefa</button>
+</div>
+
+<div class="page-content">
+
+  <!-- FILTERS -->
+  <form method="GET" action="/tarefas">
+    <div class="filter-bar">
+      <span class="filter-label">Filtros:</span>
+      <select name="status" class="form-control" style="width:auto" onchange="this.form.submit()">
+        <option value="pendentes" {% if filter_status=='pendentes' %}selected{% endif %}>Pendentes</option>
+        <option value="concluidas" {% if filter_status=='concluidas' %}selected{% endif %}>Concluídas</option>
+        <option value="todas" {% if filter_status=='todas' %}selected{% endif %}>Todas</option>
+      </select>
+      <select name="projeto" class="form-control" style="width:auto" onchange="this.form.submit()">
+        <option value="">Todos os projetos</option>
+        {% for p in projects %}
+        <option value="{{ p.id }}" {% if filter_project==p.id|string %}selected{% endif %}>{{ p.name }}</option>
+        {% endfor %}
+      </select>
+      <select name="prioridade" class="form-control" style="width:auto" onchange="this.form.submit()">
+        <option value="">Todas as prioridades</option>
+        <option value="alta" {% if filter_priority=='alta' %}selected{% endif %}>Alta</option>
+        <option value="media" {% if filter_priority=='media' %}selected{% endif %}>Média</option>
+        <option value="baixa" {% if filter_priority=='baixa' %}selected{% endif %}>Baixa</option>
+      </select>
+      <select name="tag" class="form-control" style="width:auto" onchange="this.form.submit()">
+        <option value="">Todas as tags</option>
+        {% for tag in all_tags %}
+        <option value="{{ tag }}" {% if filter_tag==tag %}selected{% endif %}>#{{ tag }}</option>
+        {% endfor %}
+      </select>
+      {% if filter_project or filter_tag or filter_priority %}
+      <a href="/tarefas?status={{ filter_status }}" class="btn btn-ghost btn-sm">✕ Limpar</a>
+      {% endif %}
+    </div>
+  </form>
+
+  <!-- TASK LIST -->
+  {% if tasks %}
+  <div style="display:flex;flex-direction:column;gap:10px">
+    {% for task in tasks %}
+    <div class="task-item {% if task.is_completed %}completed{% endif %}">
+      <!-- Check -->
+      <form method="POST" action="/tarefas/{{ task.id }}/{% if task.is_completed %}reabrir{% else %}concluir{% endif %}" style="margin:0">
+        <button type="submit" class="task-check" style="border:none;background:{% if task.is_completed %}var(--green){% else %}var(--border){% endif %};cursor:pointer;display:flex;align-items:center;justify-content:center">
+          {% if task.is_completed %}<span style="color:white;font-size:11px">✓</span>{% endif %}
+        </button>
+      </form>
+
+      <!-- Content -->
+      <div style="flex:1;min-width:0" onclick="editTask({{ task.id }}, '{{ task.title|replace("'","\\'") }}', '{{ task.notes|replace("'","\\'")|replace('\n','\\n') }}', '{{ task.tags }}', '{{ task.priority }}', {{ task.estimated_pomodoros }}, '{{ task.project_id or "" }}')">
+        <div class="task-title">{{ task.title }}</div>
+        {% if task.notes %}
+        <div style="font-size:12px;color:var(--text3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ task.notes }}</div>
+        {% endif %}
+        <div class="task-meta">
+          {% if task.project_name %}
+          <span style="display:flex;align-items:center;gap:4px">
+            <span class="color-dot" style="background:{{ task.project_color }}"></span>
+            {{ task.project_name }}
+          </span>
+          {% endif %}
+          <span class="badge badge-{{ task.priority }}">{{ task.priority }}</span>
+          {% if task.tags %}
+            {% for tag in task.tags.split(',') %}
+              {% if tag.strip() %}<span class="badge badge-tag">#{{ tag.strip() }}</span>{% endif %}
+            {% endfor %}
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Pomodoro progress -->
+      <div style="text-align:center;min-width:80px">
+        <div class="tomato-dots" style="justify-content:flex-end;flex-wrap:wrap;max-width:60px;gap:3px">
+          {% for i in range(task.estimated_pomodoros) %}
+          <div class="tomato-dot {% if i < task.completed_pomodoros %}filled{% endif %}"></div>
+          {% endfor %}
+        </div>
+        <div style="font-family:'Space Mono',monospace;font-size:11px;color:var(--text3);margin-top:4px">
+          {{ task.completed_pomodoros }}/{{ task.estimated_pomodoros }}
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        <a href="/timer" class="btn btn-ghost btn-sm" title="Focar no timer">▶</a>
+        <button class="btn btn-ghost btn-sm js-register-time" title="Registrar tempo manualmente"
+                data-task-id="{{ task.id }}" data-task-name="{{ task.title | e }}">⏱</button>
+        <form method="POST" action="/tarefas/{{ task.id }}/excluir" style="margin:0" onsubmit="return confirm('Excluir esta tarefa?')">
+          <button type="submit" class="btn btn-danger btn-sm">🗑</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="icon">📋</div>
+    <h3>Nenhuma tarefa encontrada</h3>
+    <p>Crie sua primeira tarefa para começar a organizar seu trabalho</p>
+    <button class="btn btn-primary" style="margin-top:16px" onclick="openModal('modal-create')">+ Criar Tarefa</button>
+  </div>
+  {% endif %}
+</div>
+
+<!-- CREATE MODAL -->
+<div class="modal-overlay" id="modal-create">
+  <div class="modal">
+    <div class="modal-title">Nova Tarefa</div>
+    <form method="POST" action="/tarefas/nova">
+      <div class="form-group">
+        <label class="form-label">Título *</label>
+        <input type="text" name="title" class="form-control" placeholder="Ex: Estudar Flask" required autofocus>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notas</label>
+        <textarea name="notes" class="form-control" placeholder="Detalhes, links, observações..."></textarea>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Projeto</label>
+          <select name="project_id" class="form-control">
+            <option value="">Sem projeto</option>
+            {% for p in projects %}
+            <option value="{{ p.id }}">{{ p.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Prioridade</label>
+          <select name="priority" class="form-control">
+            <option value="baixa">Baixa</option>
+            <option value="media" selected>Média</option>
+            <option value="alta">Alta</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Tags (separadas por vírgula)</label>
+          <input type="text" name="tags" class="form-control" placeholder="trabalho, estudo">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Pomodoros estimados</label>
+          <input type="number" name="estimated_pomodoros" class="form-control" value="1" min="1" max="50">
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-create')">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Criar Tarefa</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- EDIT MODAL -->
+<div class="modal-overlay" id="modal-edit">
+  <div class="modal">
+    <div class="modal-title">Editar Tarefa</div>
+    <form method="POST" id="editForm">
+      <div class="form-group">
+        <label class="form-label">Título *</label>
+        <input type="text" name="title" id="edit-title" class="form-control" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notas</label>
+        <textarea name="notes" id="edit-notes" class="form-control"></textarea>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Projeto</label>
+          <select name="project_id" id="edit-project" class="form-control">
+            <option value="">Sem projeto</option>
+            {% for p in projects %}
+            <option value="{{ p.id }}">{{ p.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Prioridade</label>
+          <select name="priority" id="edit-priority" class="form-control">
+            <option value="baixa">Baixa</option>
+            <option value="media">Média</option>
+            <option value="alta">Alta</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Tags</label>
+          <input type="text" name="tags" id="edit-tags" class="form-control">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Pomodoros estimados</label>
+          <input type="number" name="estimated_pomodoros" id="edit-poms" class="form-control" min="1" max="50">
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-edit')">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+
+<!-- REGISTER TIME MODAL -->
+<div class="modal-overlay" id="modal-register">
+  <div class="modal">
+    <div class="modal-title">⏱ Registrar Tempo</div>
+    <p style="font-size:13px;color:var(--text3);margin-bottom:20px;margin-top:-8px">
+      Tarefa: <strong id="register-task-name" style="color:var(--text)"></strong>
+    </p>
+    <form method="POST" id="registerForm">
+
+      <!-- MODE TOGGLE -->
+      <div class="form-group">
+        <label class="form-label">O que deseja registrar?</label>
+        <div style="display:flex;gap:8px">
+          <label style="flex:1;cursor:pointer">
+            <input type="radio" name="mode" value="pomodoros" id="mode-pom" checked
+                   style="display:none" onchange="toggleRegisterMode()">
+            <div class="mode-btn" id="btn-mode-pom"
+                 style="padding:10px;border-radius:10px;border:2px solid var(--red);background:rgba(230,57,70,0.08);text-align:center">
+              <div style="font-size:20px">🍅</div>
+              <div style="font-size:12px;font-weight:700;color:var(--red);margin-top:4px">Pomodoros</div>
+            </div>
+          </label>
+          <label style="flex:1;cursor:pointer">
+            <input type="radio" name="mode" value="minutes" id="mode-min"
+                   style="display:none" onchange="toggleRegisterMode()">
+            <div class="mode-btn" id="btn-mode-min"
+                 style="padding:10px;border-radius:10px;border:2px solid var(--border);text-align:center">
+              <div style="font-size:20px">⏱️</div>
+              <div style="font-size:12px;font-weight:700;color:var(--text3);margin-top:4px">Minutos livres</div>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- QUANTITY -->
+      <div class="form-group">
+        <label class="form-label" id="qty-label">Quantidade de pomodoros</label>
+        <div style="display:flex;align-items:center;gap:12px">
+          <button type="button" class="btn btn-secondary btn-sm"
+                  onclick="changeQty(-1)" style="width:36px;height:36px;padding:0;font-size:18px;flex-shrink:0">−</button>
+          <input type="number" name="quantity" id="qty-input"
+                 class="form-control" value="1" min="1" max="500"
+                 style="text-align:center;font-size:22px;font-weight:700;font-family:'Space Mono',monospace">
+          <button type="button" class="btn btn-secondary btn-sm"
+                  onclick="changeQty(1)" style="width:36px;height:36px;padding:0;font-size:18px;flex-shrink:0">+</button>
+        </div>
+        <p id="qty-hint" style="font-size:11px;color:var(--text3);margin-top:6px"></p>
+      </div>
+
+      <!-- DATE & TIME -->
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Data</label>
+          <input type="date" name="date" id="register-date" class="form-control">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Horário</label>
+          <input type="time" name="time" id="register-time" class="form-control">
+        </div>
+      </div>
+
+      <!-- NOTES -->
+      <div class="form-group">
+        <label class="form-label">Observação (opcional)</label>
+        <input type="text" name="notes" class="form-control"
+               placeholder="Ex: feito sem cronômetro, reunião...">
+      </div>
+
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-register')">Cancelar</button>
+        <button type="submit" class="btn btn-primary">✓ Registrar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+function openModal(id) {
+  document.getElementById(id).classList.add('active');
+}
+function closeModal(id) {
+  document.getElementById(id).classList.remove('active');
+}
+document.querySelectorAll('.modal-overlay').forEach(el => {
+  el.addEventListener('click', e => { if (e.target === el) el.classList.remove('active'); });
+});
+
+function editTask(id, title, notes, tags, priority, poms, projectId) {
+  document.getElementById('edit-title').value = title;
+  document.getElementById('edit-notes').value = notes.replace(/\\n/g, '\n');
+  document.getElementById('edit-tags').value = tags;
+  document.getElementById('edit-priority').value = priority;
+  document.getElementById('edit-poms').value = poms;
+  document.getElementById('edit-project').value = projectId;
+  document.getElementById('editForm').action = '/tarefas/' + id + '/editar';
+  openModal('modal-edit');
+}
+
+const POM_DURATION = {{ user.pomodoro_duration }};
+
+function openRegisterModal(taskId, taskName) {
+  document.getElementById('register-task-name').textContent = taskName;
+  document.getElementById('registerForm').action = '/tarefas/' + taskId + '/registrar-tempo';
+  // Set default date/time to now
+  const now = new Date();
+  document.getElementById('register-date').value = now.toISOString().split('T')[0];
+  document.getElementById('register-time').value = now.toTimeString().slice(0,5);
+  document.getElementById('qty-input').value = 1;
+  // Reset to pomodoro mode
+  document.getElementById('mode-pom').checked = true;
+  toggleRegisterMode();
+  openModal('modal-register');
+}
+
+function toggleRegisterMode() {
+  const isPom = document.getElementById('mode-pom').checked;
+  // Visual toggle
+  document.getElementById('btn-mode-pom').style.borderColor = isPom ? 'var(--red)' : 'var(--border)';
+  document.getElementById('btn-mode-pom').style.background  = isPom ? 'rgba(230,57,70,0.08)' : 'transparent';
+  document.querySelector('#btn-mode-pom div:last-child').style.color = isPom ? 'var(--red)' : 'var(--text3)';
+  document.getElementById('btn-mode-min').style.borderColor = !isPom ? 'var(--blue)' : 'var(--border)';
+  document.getElementById('btn-mode-min').style.background  = !isPom ? 'rgba(72,149,239,0.08)' : 'transparent';
+  document.querySelector('#btn-mode-min div:last-child').style.color = !isPom ? 'var(--blue)' : 'var(--text3)';
+  // Label and hint
+  document.getElementById('qty-label').textContent = isPom ? 'Quantidade de pomodoros' : 'Tempo em minutos';
+  updateQtyHint();
+}
+
+function updateQtyHint() {
+  const isPom = document.getElementById('mode-pom').checked;
+  const qty   = parseInt(document.getElementById('qty-input').value) || 1;
+  const hint  = document.getElementById('qty-hint');
+  if (isPom) {
+    const mins = qty * POM_DURATION;
+    hint.textContent = `= ${mins} minuto${mins !== 1 ? 's' : ''} de foco registrados`;
+  } else {
+    const poms = Math.floor(qty / POM_DURATION);
+    hint.textContent = poms > 0
+      ? `≈ ${poms} pomodoro${poms !== 1 ? 's' : ''} completo${poms !== 1 ? 's' : ''} creditados`
+      : `Menos de 1 pomodoro (${POM_DURATION} min) — registrado como sessão livre`;
+  }
+}
+
+function changeQty(delta) {
+  const input = document.getElementById('qty-input');
+  input.value = Math.max(1, (parseInt(input.value) || 1) + delta);
+  updateQtyHint();
+}
+// Event delegation for clock (⏱) buttons — avoids inline onclick escaping issues
+document.addEventListener('click', function(e) {
+  const btn = e.target.closest('.js-register-time');
+  if (!btn) return;
+  openRegisterModal(btn.dataset.taskId, btn.dataset.taskName);
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+  const qtyInput = document.getElementById('qty-input');
+  if (qtyInput) qtyInput.addEventListener('input', updateQtyHint);
+});
+</script>
+{% endblock %}

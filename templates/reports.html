@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+{% block title %}Relatórios — PomodoroFoco{% endblock %}
+{% block extra_style %}
+<style>
+.chart-container { position: relative; height: 240px; }
+.bar-chart { display: flex; align-items: flex-end; gap: 4px; height: 200px; }
+.bar-group { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.bar { width: 100%; border-radius: 4px 4px 0 0; min-height: 4px; transition: all 0.3s; cursor: pointer; }
+.bar:hover { opacity: 0.8; filter: brightness(1.1); }
+.bar-label { font-size: 10px; color: var(--text3); text-align: center; writing-mode: vertical-rl; transform: rotate(180deg); max-height: 40px; overflow: hidden; }
+.bar-val { font-size: 10px; font-family: 'Space Mono', monospace; color: var(--text3); }
+.pie-container { display: flex; gap: 20px; align-items: center; }
+.pie-legend { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+.pie-legend-item { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.pie-dot { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Relatórios</h1>
+    <p class="page-subtitle">Analise sua produtividade</p>
+  </div>
+</div>
+
+<div class="page-content">
+
+  <!-- PERIOD TABS + FILTERS -->
+  <div class="card mb-20">
+    <div class="card-body" style="padding:16px 20px">
+      <form method="GET" action="/relatorios" id="filterForm">
+        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center">
+          <div style="display:flex;gap:6px">
+            {% for p, label in [('hoje','Hoje'),('semana','Semana'),('mes','Mês'),('ano','Ano'),('personalizado','Personalizado')] %}
+            <button type="submit" name="periodo" value="{{ p }}"
+              class="btn {% if period == p %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">{{ label }}</button>
+            {% endfor %}
+          </div>
+          {% if period == 'personalizado' %}
+          <input type="date" name="inicio" value="{{ start_date }}" class="form-control" style="width:auto" onchange="document.getElementById('filterForm').submit()">
+          <span style="color:var(--text3)">até</span>
+          <input type="date" name="fim" value="{{ end_date }}" class="form-control" style="width:auto" onchange="document.getElementById('filterForm').submit()">
+          {% endif %}
+          <select name="projeto" class="form-control" style="width:auto" onchange="this.form.submit()">
+            <option value="">Todos os projetos</option>
+            {% for p in projects %}
+            <option value="{{ p.id }}" {% if filter_project==p.id|string %}selected{% endif %}>{{ p.name }}</option>
+            {% endfor %}
+          </select>
+          <select name="prioridade" class="form-control" style="width:auto" onchange="this.form.submit()">
+            <option value="">Todas prioridades</option>
+            <option value="alta" {% if filter_priority=='alta' %}selected{% endif %}>Alta</option>
+            <option value="media" {% if filter_priority=='media' %}selected{% endif %}>Média</option>
+            <option value="baixa" {% if filter_priority=='baixa' %}selected{% endif %}>Baixa</option>
+          </select>
+          <select name="tag" class="form-control" style="width:auto" onchange="this.form.submit()">
+            <option value="">Todas as tags</option>
+            {% for tag in all_tags %}
+            <option value="{{ tag }}" {% if filter_tag==tag %}selected{% endif %}>#{{ tag }}</option>
+            {% endfor %}
+          </select>
+          <input type="hidden" name="periodo" value="{{ period }}">
+          {% if period == 'personalizado' %}
+          <input type="hidden" name="inicio" value="{{ start_date }}">
+          <input type="hidden" name="fim" value="{{ end_date }}">
+          {% endif %}
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- STATS -->
+  <div class="stat-grid mb-20">
+    <div class="stat-card accent">
+      <div class="stat-label">🍅 Pomodoros</div>
+      <div class="stat-value">{{ stats.total_pomodoros or 0 }}</div>
+      <div class="stat-sub">Sessões completas</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">⏱️ Horas Focadas</div>
+      <div class="stat-value">{{ "%.1f"|format((stats.total_minutes or 0) / 60) }}h</div>
+      <div class="stat-sub">{{ stats.total_minutes or 0 }} minutos</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">📋 Tarefas Trabalhadas</div>
+      <div class="stat-value">{{ worked_tasks|length }}</div>
+      <div class="stat-sub">No período selecionado</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">📁 Projetos</div>
+      <div class="stat-value">{{ by_project|length }}</div>
+      <div class="stat-sub">Com sessões registradas</div>
+    </div>
+  </div>
+
+  <!-- DAILY CHART -->
+  {% if daily_data %}
+  <div class="card mb-20">
+    <div class="card-header">
+      <span class="card-title">📊 Pomodoros por Dia</span>
+    </div>
+    <div class="card-body">
+      {% set max_pom = daily_data | map(attribute='pomodoros') | max %}
+      <div class="bar-chart">
+        {% for d in daily_data %}
+        {% set height = (d.pomodoros / max_pom * 180) if max_pom > 0 else 0 %}
+        <div class="bar-group">
+          <span class="bar-val">{{ d.pomodoros }}</span>
+          <div class="bar" style="height:{{ height }}px;background:var(--red)" title="{{ d.day }}: {{ d.pomodoros }} pomodoros, {{ d.minutes }}min"></div>
+          <span class="bar-label">{{ d.day[5:] }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="grid-2 mb-20">
+    <!-- BY PROJECT -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">📁 Por Projeto</span>
+      </div>
+      <div class="card-body">
+        {% if by_project %}
+        {% set max_min = by_project | map(attribute='minutes') | max %}
+        {% for p in by_project %}
+        <div style="margin-bottom:14px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <div class="color-dot" style="background:{{ p.color }}"></div>
+              <span style="font-size:13px;font-weight:600">{{ p.name }}</span>
+            </div>
+            <span style="font-size:12px;color:var(--text3);font-family:'Space Mono',monospace">
+              {{ p.pomodoros }}🍅 · {{ "%.1f"|format(p.minutes/60) }}h
+            </span>
+          </div>
+          <div class="progress">
+            <div class="progress-bar" style="width:{{ (p.minutes/max_min*100) if max_min > 0 else 0 }}%;background:{{ p.color }}"></div>
+          </div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="empty-state" style="padding:20px">
+          <p>Nenhum dado de projeto no período</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- BY TAG -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">🏷️ Por Tag</span>
+      </div>
+      <div class="card-body">
+        {% if by_tag %}
+        {% set max_min = by_tag | map(attribute='minutes') | max %}
+        {% set colors = ['#e63946','#f77f00','#ffd166','#2dc653','#4895ef','#7b2d8b','#ef476f','#06d6a0'] %}
+        {% for item in by_tag %}
+        <div style="margin-bottom:14px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <span style="font-size:13px;font-weight:600">#{{ item.tag }}</span>
+            <span style="font-size:12px;color:var(--text3);font-family:'Space Mono',monospace">
+              {{ "%.1f"|format(item.minutes/60) }}h
+            </span>
+          </div>
+          <div class="progress">
+            <div class="progress-bar" style="width:{{ (item.minutes/max_min*100) if max_min > 0 else 0 }}%;background:{{ colors[loop.index0 % 8] }}"></div>
+          </div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="empty-state" style="padding:20px">
+          <p>Nenhuma tag com sessões no período</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- TASKS TABLE -->
+  {% if worked_tasks %}
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">✅ Tarefas Trabalhadas</span>
+      <span style="font-size:13px;color:var(--text3)">{{ worked_tasks|length }} tarefas</span>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Tarefa</th>
+            <th>Projeto</th>
+            <th>Prioridade</th>
+            <th>Tags</th>
+            <th>Sessões</th>
+            <th>Horas</th>
+            <th>Progresso</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for task in worked_tasks %}
+          <tr>
+            <td style="font-weight:600">
+              {{ task.title }}
+              {% if task.is_completed %}<span class="badge badge-baixa" style="margin-left:6px">✓</span>{% endif %}
+            </td>
+            <td>
+              {% if task.project_name %}
+              <span style="display:flex;align-items:center;gap:6px">
+                <div class="color-dot" style="background:{{ task.project_color }}"></div>
+                {{ task.project_name }}
+              </span>
+              {% else %}<span style="color:var(--text3)">—</span>{% endif %}
+            </td>
+            <td><span class="badge badge-{{ task.priority }}">{{ task.priority }}</span></td>
+            <td>
+              {% if task.tags %}
+                {% for tag in task.tags.split(',') %}
+                  {% if tag.strip() %}<span class="badge badge-tag" style="margin-right:2px">#{{ tag.strip() }}</span>{% endif %}
+                {% endfor %}
+              {% else %}—{% endif %}
+            </td>
+            <td style="font-family:'Space Mono',monospace">{{ task.session_count }}</td>
+            <td style="font-family:'Space Mono',monospace">{{ "%.1f"|format(task.focused_minutes/60) }}h</td>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px">
+                <div class="progress" style="width:80px">
+                  <div class="progress-bar {% if task.is_completed %}green{% endif %}"
+                    style="width:{{ [task.completed_pomodoros/task.estimated_pomodoros*100, 100]|min }}%">
+                  </div>
+                </div>
+                <span style="font-size:11px;color:var(--text3);white-space:nowrap">
+                  {{ task.completed_pomodoros }}/{{ task.estimated_pomodoros }}
+                </span>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="icon">📊</div>
+    <h3>Nenhum dado no período</h3>
+    <p>Complete sessões pomodoro associadas a tarefas para ver relatórios detalhados</p>
+    <a href="/timer" class="btn btn-primary" style="margin-top:16px">Iniciar Pomodoro</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}Configurações — PomodoroFoco{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Configurações</h1>
+    <p class="page-subtitle">Personalize sua experiência</p>
+  </div>
+</div>
+
+<div class="page-content">
+  {% if success %}
+  <div class="alert alert-success">✅ Configurações salvas com sucesso!</div>
+  {% endif %}
+
+  <div class="grid-2">
+    <!-- TIMER SETTINGS -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">⏱️ Configurações do Timer</span>
+      </div>
+      <div class="card-body">
+        <form method="POST" action="/configuracoes">
+          <input type="hidden" name="action" value="timer">
+          <div class="form-group">
+            <label class="form-label">Duração do Pomodoro (minutos)</label>
+            <input type="number" name="pomodoro_duration" value="{{ user.pomodoro_duration }}"
+                   min="1" max="90" class="form-control">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Pausa Curta (minutos)</label>
+            <input type="number" name="short_break_duration" value="{{ user.short_break_duration }}"
+                   min="1" max="30" class="form-control">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Pausa Longa (minutos)</label>
+            <input type="number" name="long_break_duration" value="{{ user.long_break_duration }}"
+                   min="1" max="60" class="form-control">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Pausas curtas antes da pausa longa</label>
+            <input type="number" name="long_break_interval" value="{{ user.long_break_interval }}"
+                   min="2" max="10" class="form-control">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Meta diária de pomodoros</label>
+            <input type="number" name="daily_goal" value="{{ user.daily_goal }}"
+                   min="1" max="50" class="form-control">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Meta semanal de pomodoros</label>
+            <input type="number" name="weekly_goal" value="{{ user.weekly_goal }}"
+                   min="1" max="200" class="form-control">
+          </div>
+          <button type="submit" class="btn btn-primary w-full">Salvar Timer</button>
+        </form>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:20px">
+      <!-- APPEARANCE -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">🎨 Aparência</span>
+        </div>
+        <div class="card-body">
+          <form method="POST" action="/configuracoes">
+            <input type="hidden" name="action" value="theme">
+            <div class="form-group">
+              <label style="display:flex;align-items:center;gap:12px;cursor:pointer">
+                <input type="checkbox" name="dark_mode" {% if user.dark_mode %}checked{% endif %}
+                       style="width:18px;height:18px;cursor:pointer" onchange="toggleDark(this.checked)">
+                <span>
+                  <span style="font-weight:600;color:var(--text)">Modo Escuro</span><br>
+                  <span style="font-size:12px;color:var(--text3)">Interface com tema escuro</span>
+                </span>
+              </label>
+            </div>
+            <div class="form-group">
+              <label style="display:flex;align-items:center;gap:12px;cursor:pointer">
+                <input type="checkbox" name="sound_enabled" {% if user.sound_enabled %}checked{% endif %}
+                       style="width:18px;height:18px;cursor:pointer">
+                <span>
+                  <span style="font-weight:600;color:var(--text)">Som ao Finalizar</span><br>
+                  <span style="font-size:12px;color:var(--text3)">Toque sonoro ao completar sessão</span>
+                </span>
+              </label>
+            </div>
+            <button type="submit" class="btn btn-primary w-full">Salvar Aparência</button>
+          </form>
+        </div>
+      </div>
+
+      <!-- SECURITY -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">🔐 Segurança</span>
+        </div>
+        <div class="card-body">
+          <form method="POST" action="/configuracoes">
+            <input type="hidden" name="action" value="password">
+            <div class="form-group">
+              <label class="form-label">Senha atual</label>
+              <input type="password" name="current_password" class="form-control" placeholder="••••••••">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Nova senha</label>
+              <input type="password" name="new_password" class="form-control" placeholder="mín. 6 caracteres">
+            </div>
+            <button type="submit" class="btn btn-secondary w-full">Alterar Senha</button>
+          </form>
+        </div>
+      </div>
+
+      <!-- ACCOUNT INFO -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">👤 Conta</span>
+        </div>
+        <div class="card-body">
+          <div style="display:flex;align-items:center;gap:16px;padding:12px;background:var(--bg2);border-radius:10px">
+            <div style="width:48px;height:48px;border-radius:50%;background:var(--red);display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:20px">
+              {{ user.username[0].upper() }}
+            </div>
+            <div>
+              <div style="font-weight:700;font-size:16px">{{ user.username }}</div>
+              <div style="font-size:13px;color:var(--text3)">{{ user.email }}</div>
+              <div style="font-size:11px;color:var(--text3);margin-top:2px">
+                Desde {{ user.created_at[:10].replace('-', '/') }}
+              </div>
+            </div>
+          </div>
+          <a href="/logout" class="btn btn-danger w-full" style="margin-top:12px;justify-content:center">
+            Sair da conta
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function toggleDark(isDark) {
+  document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+}
+</script>
+{% endblock %}

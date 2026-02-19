@@ -1,0 +1,737 @@
+{% extends "base.html" %}
+{% block title %}Timer — PomodoroFoco{% endblock %}
+{% block extra_style %}
+<style>
+.timer-page {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 32px 24px 48px;
+}
+
+/* MODE TABS */
+.mode-tabs {
+  display: flex; gap: 8px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 6px; margin-bottom: 40px;
+}
+.mode-tab {
+  padding: 10px 20px; border-radius: 8px;
+  font-size: 14px; font-weight: 600; cursor: pointer;
+  border: none; background: transparent; color: var(--text2);
+  font-family: inherit; transition: all 0.2s;
+}
+.mode-tab.active { background: var(--red); color: white; }
+.mode-tab.break-short.active { background: var(--blue); }
+.mode-tab.break-long.active { background: var(--green); }
+.mode-tab:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* RING */
+.timer-container {
+  position: relative; display: flex; align-items: center; justify-content: center;
+  margin-bottom: 28px;
+}
+.timer-svg { transform: rotate(-90deg); }
+.timer-track { fill: none; stroke: var(--border); stroke-width: 8; }
+.timer-progress {
+  fill: none; stroke: var(--red); stroke-width: 8; stroke-linecap: round;
+  transition: stroke-dashoffset 0.6s linear, stroke 0.3s;
+}
+.timer-progress.break-short { stroke: var(--blue); }
+.timer-progress.break-long  { stroke: var(--green); }
+.timer-display { position: absolute; text-align: center; }
+.timer-time {
+  font-family: 'Space Mono', monospace;
+  font-size: 64px; font-weight: 700; color: var(--text);
+  line-height: 1; letter-spacing: -2px;
+}
+.timer-label { font-size: 14px; color: var(--text3); margin-top: 8px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
+
+/* CONTROLS */
+.timer-controls { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
+.btn-timer-main {
+  width: 72px; height: 72px; border-radius: 50%;
+  background: var(--red); border: none; color: white;
+  font-size: 28px; cursor: pointer; transition: all 0.15s;
+  box-shadow: 0 4px 20px rgba(230,57,70,0.4);
+}
+.btn-timer-main:hover { transform: scale(1.08); }
+.btn-timer-main.paused { background: var(--text2); box-shadow: none; }
+.btn-timer-side {
+  width: 48px; height: 48px; border-radius: 50%;
+  background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text2); font-size: 18px; cursor: pointer;
+  transition: all 0.15s; display: flex; align-items: center; justify-content: center;
+}
+.btn-timer-side:hover { background: var(--border); color: var(--text); }
+.btn-timer-side:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* FINISH EARLY */
+.btn-finish-early {
+  padding: 8px 20px; border-radius: 100px;
+  background: rgba(44,198,83,0.12); border: 1.5px solid rgba(44,198,83,0.4);
+  color: var(--green); font-size: 13px; font-weight: 700;
+  cursor: pointer; font-family: inherit; transition: all 0.15s;
+  display: none; margin-bottom: 24px;
+}
+.btn-finish-early:hover { background: rgba(44,198,83,0.22); transform: translateY(-1px); }
+.btn-finish-early.visible { display: inline-flex; align-items: center; gap: 6px; }
+
+/* POMODORO DOTS */
+.pomodoro-count { display: flex; gap: 8px; margin-bottom: 24px; }
+.pom-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--border); transition: background 0.3s; }
+.pom-dot.done { background: var(--red); }
+
+/* STATUS */
+.timer-status { font-size: 14px; color: var(--text3); margin-bottom: 8px; min-height: 20px; }
+.timer-status.running { color: var(--green); font-weight: 600; }
+
+/* SELECTED TASK BADGE */
+.selected-task-badge {
+  display: none; align-items: center; gap: 8px;
+  padding: 6px 14px; border-radius: 100px;
+  background: var(--surface); border: 1px solid var(--border);
+  font-size: 13px; color: var(--text2); margin-bottom: 20px;
+  max-width: 420px;
+}
+.selected-task-badge.visible { display: flex; }
+.selected-task-badge .task-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); flex-shrink: 0; }
+.selected-task-badge .task-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; color: var(--text); }
+
+/* TASK SELECTOR CARD */
+.task-selector-card {
+  width: 100%; max-width: 520px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden;
+}
+.task-selector-header {
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px; font-weight: 700; color: var(--text3);
+  text-transform: uppercase; letter-spacing: 0.6px;
+  display: flex; justify-content: space-between; align-items: center;
+}
+
+/* FILTER BAR */
+.task-filter-bar {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  background: var(--bg2);
+}
+.filter-input {
+  flex: 1; min-width: 120px;
+  padding: 7px 11px; border-radius: 8px;
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--text); font-size: 13px; font-family: inherit;
+  transition: border-color 0.15s;
+}
+.filter-input:focus { outline: none; border-color: var(--red); }
+.filter-select {
+  padding: 7px 11px; border-radius: 8px;
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--text); font-size: 13px; font-family: inherit; cursor: pointer;
+  transition: border-color 0.15s;
+}
+.filter-select:focus { outline: none; border-color: var(--red); }
+
+/* TASK LIST SCROLL */
+.task-list-scroll { max-height: 280px; overflow-y: auto; }
+.task-list-scroll::-webkit-scrollbar { width: 4px; }
+.task-list-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.task-item-select {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 18px; cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  border-left: 3px solid transparent;
+  transition: background 0.1s;
+}
+.task-item-select:hover { background: var(--bg2); }
+.task-item-select.selected { background: rgba(230,57,70,0.07); border-left-color: var(--red); }
+.task-item-select:last-child { border-bottom: none; }
+.task-select-info { flex: 1; min-width: 0; }
+.task-select-title { font-size: 14px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.task-select-meta { font-size: 11px; color: var(--text3); margin-top: 2px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.task-select-poms { font-family: 'Space Mono', monospace; font-size: 12px; color: var(--red); font-weight: 700; flex-shrink: 0; }
+
+.task-empty-msg { padding: 24px; text-align: center; color: var(--text3); font-size: 14px; display: none; }
+
+/* NOTIFICATION */
+.notif {
+  position: fixed; top: 24px; right: 24px; z-index: 9999;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px 20px;
+  box-shadow: var(--shadow-lg); transform: translateX(140%);
+  transition: transform 0.35s cubic-bezier(0.34,1.56,0.64,1); max-width: 320px;
+}
+.notif.show { transform: translateX(0); }
+.notif-title { font-weight: 700; color: var(--text); margin-bottom: 4px; font-size: 15px; }
+.notif-msg { font-size: 13px; color: var(--text3); }
+
+/* MINI FLOATING WIDGET (shown on other pages) */
+.timer-float-widget {
+  position: fixed; bottom: 24px; right: 24px; z-index: 8888;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 100px; padding: 10px 18px;
+  box-shadow: var(--shadow-lg);
+  display: none; align-items: center; gap: 12px;
+  font-size: 14px; cursor: pointer; text-decoration: none;
+  transition: transform 0.2s; color: var(--text);
+}
+.timer-float-widget:hover { transform: scale(1.04); }
+.timer-float-widget.show { display: flex; }
+.float-time { font-family: 'Space Mono', monospace; font-weight: 700; font-size: 16px; }
+.float-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: blink 1.2s ease-in-out infinite; }
+@keyframes blink { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="timer-page">
+
+  <!-- MODE TABS -->
+  <div class="mode-tabs">
+    <button class="mode-tab active" id="tab-pomodoro" onclick="setMode('pomodoro')">🍅 Pomodoro</button>
+    <button class="mode-tab break-short" id="tab-short" onclick="setMode('short')">☕ Pausa Curta</button>
+    <button class="mode-tab break-long" id="tab-long" onclick="setMode('long')">🌿 Pausa Longa</button>
+  </div>
+
+  <!-- RING -->
+  <div class="timer-container">
+    <svg class="timer-svg" width="260" height="260" viewBox="0 0 260 260">
+      <circle class="timer-track" cx="130" cy="130" r="118"/>
+      <circle class="timer-progress" id="timerProgress" cx="130" cy="130" r="118"
+              stroke-dasharray="741.4" stroke-dashoffset="0"/>
+    </svg>
+    <div class="timer-display">
+      <div class="timer-time" id="timerDisplay">25:00</div>
+      <div class="timer-label" id="timerLabel">Foco</div>
+    </div>
+  </div>
+
+  <div class="timer-status" id="timerStatus">Pronto para começar</div>
+  <div class="pomodoro-count" id="pomodoroCount"></div>
+
+  <div class="timer-controls">
+    <button class="btn-timer-side" onclick="resetTimer()" title="Resetar">↺</button>
+    <button class="btn-timer-main" id="btnMain" onclick="toggleTimer()">▶</button>
+    <button class="btn-timer-side" onclick="skipSession()" title="Pular sessão">⏭</button>
+  </div>
+
+  <button class="btn-finish-early" id="btnFinishEarly" onclick="finishEarly()">
+    ✓ Concluir Agora
+  </button>
+
+  <div class="selected-task-badge" id="selectedTaskBadge">
+    <span class="task-dot" id="selectedTaskDot"></span>
+    <span class="task-name" id="selectedTaskName"></span>
+  </div>
+
+  <!-- TASK SELECTOR -->
+  <div class="task-selector-card">
+    <div class="task-selector-header">
+      <span>Selecionar Tarefa</span>
+      <span id="filterCount" style="font-size:11px">{{ tasks|length }} tarefas</span>
+    </div>
+
+    <!-- FILTER BAR -->
+    <div class="task-filter-bar">
+      <input type="text" class="filter-input" id="filterText"
+             placeholder="🔍 Buscar por nome..." oninput="applyFilters()">
+      <select class="filter-select" id="filterProject" onchange="applyFilters()">
+        <option value="">Todos projetos</option>
+        {% for p in projects %}
+        <option value="{{ p.id }}">{{ p.name }}</option>
+        {% endfor %}
+      </select>
+      <select class="filter-select" id="filterPriority" onchange="applyFilters()">
+        <option value="">Todas prioridades</option>
+        <option value="alta">🔴 Alta</option>
+        <option value="media">🟡 Média</option>
+        <option value="baixa">🟢 Baixa</option>
+      </select>
+    </div>
+
+    <div class="task-list-scroll" id="taskList">
+      <!-- No task option -->
+      <div class="task-item-select selected" id="task-none"
+           data-id="" data-title="" data-project="" data-priority=""
+           data-name="" data-color="">
+        <div style="font-size:18px">🆓</div>
+        <div class="task-select-info">
+          <div class="task-select-title">Sessão Livre</div>
+          <div class="task-select-meta">Sem tarefa associada</div>
+        </div>
+      </div>
+
+      {% for task in tasks %}
+      <div class="task-item-select"
+           id="task-{{ task.id }}"
+           data-id="{{ task.id }}"
+           data-title="{{ task.title | lower }}"
+           data-project="{{ task.project_id or '' }}"
+           data-priority="{{ task.priority }}"
+           data-name="{{ task.title | e }}"
+           data-color="{{ task.project_color or '#888888' }}">
+        <div class="color-dot" style="background:{{ task.project_color or '#888888' }};width:10px;height:10px;border-radius:50%;flex-shrink:0"></div>
+        <div class="task-select-info">
+          <div class="task-select-title">{{ task.title }}</div>
+          <div class="task-select-meta">
+            {% if task.project_name %}<span>{{ task.project_name }}</span>{% endif %}
+            <span class="badge badge-{{ task.priority }}" style="font-size:9px;padding:1px 6px">{{ task.priority }}</span>
+            {% if task.tags %}{% for tag in task.tags.split(',')[:2] %}{% if tag.strip() %}<span>#{{ tag.strip() }}</span>{% endif %}{% endfor %}{% endif %}
+          </div>
+        </div>
+        <span class="task-select-poms" id="poms-{{ task.id }}">🍅 {{ task.completed_pomodoros }}/{{ task.estimated_pomodoros }}</span>
+      </div>
+      {% else %}
+      <div style="padding:28px;text-align:center;color:var(--text3);font-size:14px">
+        Nenhuma tarefa pendente. <a href="/tarefas" style="color:var(--red)">Criar tarefa →</a>
+      </div>
+      {% endfor %}
+
+      <div class="task-empty-msg" id="taskEmptyMsg">
+        Nenhuma tarefa encontrada para este filtro.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Notification toast -->
+<div class="notif" id="notification">
+  <div class="notif-title" id="notif-title"></div>
+  <div class="notif-msg" id="notif-msg"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ═══════════════════════════════════════════════════════
+//  SETTINGS (from server)
+// ═══════════════════════════════════════════════════════
+const CFG = {
+  pomodoro: {{ user.pomodoro_duration }},
+  short:    {{ user.short_break_duration }},
+  long:     {{ user.long_break_duration }},
+  interval: {{ user.long_break_interval }},
+  sound:    {{ 'true' if user.sound_enabled else 'false' }}
+};
+
+const MODES = {
+  pomodoro: { label:'Foco',        dbType:'pomodoro',    cls:'' },
+  short:    { label:'Pausa Curta', dbType:'short_break', cls:' break-short' },
+  long:     { label:'Pausa Longa', dbType:'long_break',  cls:' break-long' },
+};
+const CIRC = 741.4;
+const SK   = 'pf_timer_v2';
+
+// ═══════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════
+let S = {
+  mode: 'pomodoro',
+  timeLeft: CFG.pomodoro * 60,
+  totalTime: CFG.pomodoro * 60,
+  running: false,
+  startedAt: null,       // wall-clock ms when last resumed
+  secsAtResume: null,    // timeLeft value at last resume
+  sessionId: null,
+  taskId: null,
+  taskName: null,
+  taskColor: null,
+  pomCycle: 0,
+  pomTotal: 0,
+};
+
+let ticker = null;
+
+// ═══════════════════════════════════════════════════════
+//  PERSISTENCE
+// ═══════════════════════════════════════════════════════
+function persist() {
+  if (S.running && S.startedAt) {
+    const elapsed = Math.floor((Date.now() - S.startedAt) / 1000);
+    S.timeLeft = Math.max(0, S.secsAtResume - elapsed);
+  }
+  try { localStorage.setItem(SK, JSON.stringify(S)); } catch(e) {}
+}
+
+function hydrate() {
+  let raw;
+  try { raw = localStorage.getItem(SK); } catch(e) {}
+  if (!raw) return;
+  try {
+    const saved = JSON.parse(raw);
+    if (saved.running && saved.startedAt) {
+      const elapsed = Math.floor((Date.now() - saved.startedAt) / 1000);
+      saved.timeLeft = Math.max(0, saved.secsAtResume - elapsed);
+      if (saved.timeLeft === 0) {
+        // Finished while away
+        if (saved.sessionId) {
+          fetch('/api/session/complete', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ session_id: saved.sessionId })
+          }).catch(()=>{});
+          saved.sessionId = null;
+        }
+        if (saved.mode === 'pomodoro') {
+          saved.pomCycle  = (saved.pomCycle  || 0) + 1;
+          saved.pomTotal  = (saved.pomTotal  || 0) + 1;
+          if (saved.pomCycle >= CFG.interval) { saved.pomCycle = 0; saved.mode = 'long'; }
+          else { saved.mode = 'short'; }
+        } else { saved.mode = 'pomodoro'; }
+        saved.timeLeft  = dur(saved.mode);
+        saved.totalTime = saved.timeLeft;
+        saved.running   = false;
+      }
+    }
+    S = saved;
+  } catch(e) {}
+}
+
+// ═══════════════════════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════════════════════
+function dur(m) {
+  if (m==='pomodoro') return CFG.pomodoro*60;
+  if (m==='short')    return CFG.short*60;
+  return CFG.long*60;
+}
+function fmt(secs) {
+  return String(Math.floor(secs/60)).padStart(2,'0')+':'+String(secs%60).padStart(2,'0');
+}
+
+// ═══════════════════════════════════════════════════════
+//  RENDER
+// ═══════════════════════════════════════════════════════
+function render() {
+  // Time + ring
+  document.getElementById('timerDisplay').textContent = fmt(S.timeLeft);
+  document.getElementById('timerLabel').textContent   = MODES[S.mode].label;
+  document.title = fmt(S.timeLeft) + ' — ' + MODES[S.mode].label;
+
+  const ratio = S.totalTime > 0 ? S.timeLeft / S.totalTime : 1;
+  const prog = document.getElementById('timerProgress');
+  prog.style.strokeDashoffset = CIRC * (1 - ratio);
+  prog.className = 'timer-progress' + MODES[S.mode].cls;
+
+  // Tabs
+  ['pomodoro','short','long'].forEach(m => {
+    const tab = document.getElementById('tab-'+m);
+    tab.classList.toggle('active', S.mode===m);
+    tab.disabled = S.running;
+  });
+
+  // Main button
+  const btn = document.getElementById('btnMain');
+  btn.textContent = S.running ? '⏸' : '▶';
+  btn.classList.toggle('paused', S.running);
+
+  // Status text
+  const st = document.getElementById('timerStatus');
+  if (S.running) { st.textContent='Em andamento...'; st.className='timer-status running'; }
+  else if (S.timeLeft < dur(S.mode)) { st.textContent='Pausado'; st.className='timer-status'; }
+  else { st.textContent='Pronto para começar'; st.className='timer-status'; }
+
+  // Pomodoro dots
+  const dc = document.getElementById('pomodoroCount');
+  dc.innerHTML = '';
+  for (let i=0;i<CFG.interval;i++) {
+    const d = document.createElement('div');
+    d.className = 'pom-dot'+(i<S.pomCycle?' done':'');
+    dc.appendChild(d);
+  }
+
+  // Finish-early button: only when running AND pomodoro mode
+  document.getElementById('btnFinishEarly').classList.toggle('visible', S.running && S.mode==='pomodoro');
+
+  // Selected task badge
+  const badge = document.getElementById('selectedTaskBadge');
+  if (S.taskId && S.taskName) {
+    badge.classList.add('visible');
+    document.getElementById('selectedTaskName').textContent = S.taskName;
+    document.getElementById('selectedTaskDot').style.background = S.taskColor || 'var(--red)';
+  } else {
+    badge.classList.remove('visible');
+  }
+
+  // Highlight row in list
+  document.querySelectorAll('.task-item-select').forEach(el => el.classList.remove('selected'));
+  const selEl = document.getElementById(S.taskId ? 'task-'+S.taskId : 'task-none');
+  if (selEl) selEl.classList.add('selected');
+}
+
+// ═══════════════════════════════════════════════════════
+//  TICKER
+// ═══════════════════════════════════════════════════════
+function startTicking() {
+  clearInterval(ticker);
+  ticker = setInterval(() => {
+    if (!S.running) return;
+    const elapsed = Math.floor((Date.now() - S.startedAt) / 1000);
+    S.timeLeft = Math.max(0, S.secsAtResume - elapsed);
+    render();
+    persist();
+    if (S.timeLeft <= 0) finishSession(false);
+  }, 500);
+}
+
+// ═══════════════════════════════════════════════════════
+//  CONTROLS
+// ═══════════════════════════════════════════════════════
+async function toggleTimer() {
+  if (!S.running) {
+    // Start or resume
+    if (!S.sessionId) {
+      try {
+        const res = await fetch('/api/session/start', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({
+            session_type: MODES[S.mode].dbType,
+            task_id: S.taskId,
+            duration_minutes: Math.round(dur(S.mode)/60)
+          })
+        });
+        S.sessionId = (await res.json()).session_id;
+      } catch(e) {}
+    }
+    S.running     = true;
+    S.startedAt   = Date.now();
+    S.secsAtResume = S.timeLeft;
+    startTicking();
+  } else {
+    // Pause
+    const elapsed = Math.floor((Date.now() - S.startedAt) / 1000);
+    S.timeLeft = Math.max(0, S.secsAtResume - elapsed);
+    S.running  = false;
+    clearInterval(ticker);
+  }
+  render();
+  persist();
+}
+
+async function finishSession(isEarly) {
+  clearInterval(ticker);
+  S.running = false;
+
+  const elapsed = getDuration => Math.max(1, dur(S.mode) - S.timeLeft);
+  const actualMins = isEarly ? (Math.round(Math.max(1, dur(S.mode) - S.timeLeft) / 60) || 1) : null;
+
+  if (S.sessionId) {
+    try {
+      await fetch('/api/session/complete', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ session_id: S.sessionId, actual_minutes: actualMins })
+      });
+    } catch(e) {}
+    // Update pomodoro counter in DOM
+    if (S.taskId && S.mode==='pomodoro') {
+      const pomEl = document.getElementById('poms-'+S.taskId);
+      if (pomEl) {
+        const parts = pomEl.textContent.trim().replace('🍅 ','').split('/');
+        pomEl.textContent = '🍅 '+(parseInt(parts[0])+1)+'/'+parts[1];
+      }
+    }
+    S.sessionId = null;
+  }
+
+  if (CFG.sound) playSound();
+
+  if (S.mode==='pomodoro') {
+    S.pomCycle++; S.pomTotal++;
+    const timeMsg = isEarly && actualMins ? ` (${actualMins}min)` : '';
+    if (S.pomCycle >= CFG.interval) {
+      S.pomCycle = 0;
+      showNotif('🌿 Pausa Longa!', `Ciclo completo${timeMsg}! Você merece descanso.`);
+      switchMode('long');
+    } else {
+      showNotif('☕ Pausa Curta!', `Pomodoro ${S.pomTotal} concluído${timeMsg}!`);
+      switchMode('short');
+    }
+  } else {
+    showNotif('🍅 Hora de Focar!', 'Pausa encerrada. Vamos lá!');
+    switchMode('pomodoro');
+  }
+  render();
+  persist();
+}
+
+async function finishEarly() {
+  if (!S.running || S.mode!=='pomodoro') return;
+  const mins = Math.max(1, Math.round((dur(S.mode) - S.timeLeft) / 60));
+  if (!confirm(`Concluir o pomodoro agora?\n${mins} minuto(s) será registrado para esta sessão.`)) return;
+  await finishSession(true);
+}
+
+async function resetTimer() {
+  clearInterval(ticker);
+  if (S.sessionId) {
+    try {
+      await fetch('/api/session/cancel', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ session_id: S.sessionId })
+      });
+    } catch(e) {}
+    S.sessionId = null;
+  }
+  S.running   = false;
+  S.timeLeft  = dur(S.mode);
+  S.totalTime = dur(S.mode);
+  S.startedAt = null;
+  render();
+  persist();
+}
+
+async function skipSession() {
+  clearInterval(ticker);
+  if (S.sessionId) {
+    try {
+      await fetch('/api/session/cancel', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ session_id: S.sessionId })
+      });
+    } catch(e) {}
+    S.sessionId = null;
+  }
+  S.running = false;
+  switchMode(S.mode==='pomodoro' ? 'short' : 'pomodoro');
+  render();
+  persist();
+}
+
+function switchMode(m) {
+  S.mode      = m;
+  S.timeLeft  = dur(m);
+  S.totalTime = dur(m);
+  S.running   = false;
+  S.sessionId = null;
+  S.startedAt = null;
+}
+
+function setMode(m) {
+  if (S.running) return;
+  if (S.sessionId) {
+    fetch('/api/session/cancel', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ session_id: S.sessionId })
+    }).catch(()=>{});
+    S.sessionId = null;
+  }
+  switchMode(m);
+  render();
+  persist();
+}
+
+// ═══════════════════════════════════════════════════════
+//  TASK SELECTION
+// ═══════════════════════════════════════════════════════
+function selectTask(id, name, color) {
+  S.taskId    = id || null;
+  S.taskName  = name || null;
+  S.taskColor = color || null;
+  render();
+  persist();
+}
+
+// Event delegation — handles clicks on any task row (avoids inline onclick escaping issues)
+function initTaskClicks() {
+  document.getElementById('taskList').addEventListener('click', function(e) {
+    const row = e.target.closest('.task-item-select');
+    if (!row) return;
+    const id    = row.dataset.id ? parseInt(row.dataset.id) : null;
+    const name  = row.dataset.name  || null;
+    const color = row.dataset.color || null;
+    selectTask(id, name, color);
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+//  TASK FILTER
+// ═══════════════════════════════════════════════════════
+function applyFilters() {
+  const txt  = document.getElementById('filterText').value.toLowerCase().trim();
+  const proj = document.getElementById('filterProject').value;
+  const prio = document.getElementById('filterPriority').value;
+
+  let visible = 0;
+  document.querySelectorAll('.task-item-select[data-id]').forEach(el => {
+    if (!el.dataset.id) return; // skip "Sessão Livre"
+    const ok = (!txt  || el.dataset.title.includes(txt))
+            && (!proj || el.dataset.project === proj)
+            && (!prio || el.dataset.priority === prio);
+    el.style.display = ok ? '' : 'none';
+    if (ok) visible++;
+  });
+
+  document.getElementById('taskEmptyMsg').style.display = visible===0 ? '' : 'none';
+  document.getElementById('filterCount').textContent = visible + ' tarefa' + (visible!==1?'s':'');
+}
+
+// ═══════════════════════════════════════════════════════
+//  SOUND
+// ═══════════════════════════════════════════════════════
+function playSound() {
+  try {
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    [523.25,659.25,783.99].forEach((freq,i) => {
+      const o=ctx.createOscillator(), g=ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.value=freq; o.type='sine';
+      const t=ctx.currentTime+i*0.22;
+      g.gain.setValueAtTime(0.28,t);
+      g.gain.exponentialRampToValueAtTime(0.001,t+0.45);
+      o.start(t); o.stop(t+0.5);
+    });
+  } catch(e) {}
+}
+
+// ═══════════════════════════════════════════════════════
+//  NOTIFICATION
+// ═══════════════════════════════════════════════════════
+let notifTO = null;
+function showNotif(title, msg) {
+  document.getElementById('notif-title').textContent = title;
+  document.getElementById('notif-msg').textContent   = msg;
+  const el = document.getElementById('notification');
+  el.classList.add('show');
+  clearTimeout(notifTO);
+  notifTO = setTimeout(()=>el.classList.remove('show'), 5500);
+}
+
+// ═══════════════════════════════════════════════════════
+//  PAGE VISIBILITY (tab regains focus)
+// ═══════════════════════════════════════════════════════
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && S.running && S.startedAt) {
+    const elapsed = Math.floor((Date.now() - S.startedAt) / 1000);
+    S.timeLeft = Math.max(0, S.secsAtResume - elapsed);
+    if (S.timeLeft === 0) { finishSession(false); return; }
+    startTicking();
+    render();
+  }
+});
+
+// ═══════════════════════════════════════════════════════
+//  SAVE ON NAVIGATION
+// ═══════════════════════════════════════════════════════
+window.addEventListener('beforeunload', persist);
+window.addEventListener('pagehide',     persist);
+
+// ═══════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════
+hydrate();
+
+if (S.running && S.startedAt) {
+  startTicking();
+}
+
+// If taskId no longer exists in DOM (task completed elsewhere), clear it
+if (S.taskId && !document.getElementById('task-'+S.taskId)) {
+  S.taskId = null; S.taskName = null; S.taskColor = null;
+}
+
+render();
+applyFilters();
+initTaskClicks();
+</script>
+{% endblock %}
