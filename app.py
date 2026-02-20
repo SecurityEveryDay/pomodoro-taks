@@ -127,6 +127,7 @@ def login():
         return render_template('login.html', error='E-mail ou senha inválidos.')
     return render_template('login.html')
 
+
 @app.route('/cadastro', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
