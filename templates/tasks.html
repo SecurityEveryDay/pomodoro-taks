@@ -15,6 +15,9 @@
   <form method="GET" action="/tarefas">
     <div class="filter-bar">
       <span class="filter-label">Filtros:</span>
+      <input type="text" name="busca" class="form-control" style="width:200px"
+             placeholder="🔍 Buscar tarefas..." value="{{ filter_search }}"
+             oninput="clearTimeout(window._st);window._st=setTimeout(()=>this.form.submit(),500)">
       <select name="status" class="form-control" style="width:auto" onchange="this.form.submit()">
         <option value="pendentes" {% if filter_status=='pendentes' %}selected{% endif %}>Pendentes</option>
         <option value="concluidas" {% if filter_status=='concluidas' %}selected{% endif %}>Concluídas</option>
@@ -38,7 +41,7 @@
         <option value="{{ tag }}" {% if filter_tag==tag %}selected{% endif %}>#{{ tag }}</option>
         {% endfor %}
       </select>
-      {% if filter_project or filter_tag or filter_priority %}
+      {% if filter_project or filter_tag or filter_priority or filter_search %}
       <a href="/tarefas?status={{ filter_status }}" class="btn btn-ghost btn-sm">✕ Limpar</a>
       {% endif %}
     </div>

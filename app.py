@@ -36,6 +36,8 @@ def init_db():
                 email TEXT UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_admin INTEGER DEFAULT 0,
+                is_active INTEGER DEFAULT 1,
                 -- settings
                 pomodoro_duration INTEGER DEFAULT 25,
                 short_break_duration INTEGER DEFAULT 5,
@@ -89,6 +91,15 @@ def init_db():
         ''')
         db.commit()
 
+        # ── Migrations for existing databases ──
+        existing_cols = [row[1] for row in db.execute("PRAGMA table_info(users)").fetchall()]
+        if 'is_admin' not in existing_cols:
+            db.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0")
+            db.commit()
+        if 'is_active' not in existing_cols:
+            db.execute("ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1")
+            db.commit()
+
 # ─────────────────────── AUTH HELPERS ───────────────────────
 
 def login_required(f):
@@ -96,6 +107,17 @@ def login_required(f):
     def decorated(*args, **kwargs):
         if 'user_id' not in session:
             return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated
+
+def admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('login'))
+        user = current_user()
+        if not user or not user['is_admin']:
+            return redirect(url_for('dashboard'))
         return f(*args, **kwargs)
     return decorated
 
@@ -121,11 +143,15 @@ def login():
         db = get_db()
         user = db.execute('SELECT * FROM users WHERE email = ?', [email]).fetchone()
         if user and check_password_hash(user['password_hash'], password):
+            if not user['is_active']:
+                return render_template('login.html', error='Conta desativada. Contate o administrador.')
             session['user_id'] = user['id']
             session['username'] = user['username']
+            session['is_admin'] = bool(user['is_admin'])
             return redirect(url_for('dashboard'))
         return render_template('login.html', error='E-mail ou senha inválidos.')
     return render_template('login.html')
+
 
 @app.route('/cadastro', methods=['GET', 'POST'])
 def register():
@@ -300,6 +326,7 @@ def tasks():
     filter_tag = request.args.get('tag', '')
     filter_priority = request.args.get('prioridade', '')
     filter_status = request.args.get('status', 'pendentes')
+    filter_search = request.args.get('busca', '').strip()
 
     query = '''
         SELECT t.*, p.name as project_name, p.color as project_color
@@ -319,6 +346,10 @@ def tasks():
     if filter_priority:
         query += ' AND t.priority=?'
         params.append(filter_priority)
+    if filter_search:
+        query += ' AND (t.title LIKE ? OR t.notes LIKE ? OR t.tags LIKE ?)'
+        like = f'%{filter_search}%'
+        params.extend([like, like, like])
 
     query += ''' ORDER BY CASE t.priority WHEN 'alta' THEN 1 WHEN 'media' THEN 2 WHEN 'baixa' THEN 3 ELSE 4 END,
                 t.created_at DESC'''
@@ -343,7 +374,8 @@ def tasks():
         user=user, tasks=task_list, projects=projects,
         all_tags=sorted(all_tags),
         filter_project=filter_project, filter_tag=filter_tag,
-        filter_priority=filter_priority, filter_status=filter_status
+        filter_priority=filter_priority, filter_status=filter_status,
+        filter_search=filter_search
     )
 
 @app.route('/tarefas/nova', methods=['POST'])
@@ -689,6 +721,71 @@ def settings():
         user = current_user()
         return render_template('settings.html', user=user, success=True)
     return render_template('settings.html', user=user)
+
+# ─────────────────────── ADMIN ───────────────────────
+
+@app.route('/admin')
+@admin_required
+def admin_panel():
+    user = current_user()
+    db = get_db()
+    users = db.execute('''
+        SELECT u.*,
+               COUNT(DISTINCT t.id) as total_tasks,
+               COUNT(DISTINCT ps.id) as total_sessions
+        FROM users u
+        LEFT JOIN tasks t ON t.user_id = u.id
+        LEFT JOIN pomodoro_sessions ps ON ps.user_id = u.id AND ps.is_completed = 1
+        GROUP BY u.id
+        ORDER BY u.created_at DESC
+    ''').fetchall()
+    return render_template('admin.html', user=user, users=users)
+
+@app.route('/admin/usuario/<int:target_id>/toggle-admin', methods=['POST'])
+@admin_required
+def admin_toggle_admin(target_id):
+    db = get_db()
+    target = db.execute('SELECT * FROM users WHERE id=?', [target_id]).fetchone()
+    if not target or target_id == session['user_id']:
+        return redirect(url_for('admin_panel'))
+    db.execute('UPDATE users SET is_admin=? WHERE id=?', [0 if target['is_admin'] else 1, target_id])
+    db.commit()
+    return redirect(url_for('admin_panel'))
+
+@app.route('/admin/usuario/<int:target_id>/toggle-active', methods=['POST'])
+@admin_required
+def admin_toggle_active(target_id):
+    db = get_db()
+    target = db.execute('SELECT * FROM users WHERE id=?', [target_id]).fetchone()
+    if not target or target_id == session['user_id']:
+        return redirect(url_for('admin_panel'))
+    db.execute('UPDATE users SET is_active=? WHERE id=?', [0 if target['is_active'] else 1, target_id])
+    db.commit()
+    return redirect(url_for('admin_panel'))
+
+@app.route('/admin/usuario/<int:target_id>/reset-senha', methods=['POST'])
+@admin_required
+def admin_reset_password(target_id):
+    new_pw = request.form.get('new_password', '').strip()
+    if len(new_pw) < 6:
+        return redirect(url_for('admin_panel'))
+    db = get_db()
+    db.execute('UPDATE users SET password_hash=? WHERE id=?',
+               [generate_password_hash(new_pw), target_id])
+    db.commit()
+    return redirect(url_for('admin_panel'))
+
+@app.route('/admin/usuario/<int:target_id>/excluir', methods=['POST'])
+@admin_required
+def admin_delete_user(target_id):
+    if target_id == session['user_id']:
+        return redirect(url_for('admin_panel'))
+    db = get_db()
+    db.execute('DELETE FROM users WHERE id=?', [target_id])
+    db.commit()
+    return redirect(url_for('admin_panel'))
+
+# ─────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
     init_db()

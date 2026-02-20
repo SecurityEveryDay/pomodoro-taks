@@ -326,11 +326,42 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 .text-right { text-align: right; }
 .text-center { text-align: center; }
 
+/* HAMBURGER */
+.hamburger {
+  display: none;
+  position: fixed; top: 14px; left: 14px; z-index: 200;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); width: 40px; height: 40px;
+  align-items: center; justify-content: center;
+  cursor: pointer; box-shadow: var(--shadow);
+  font-size: 18px; color: var(--text);
+}
+
+.sidebar-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.4); z-index: 99;
+}
+.sidebar-overlay.active { display: block; }
+
 @media (max-width: 768px) {
-  .sidebar { transform: translateX(-100%); }
+  .hamburger { display: flex; }
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    z-index: 150;
+  }
+  .sidebar.open { transform: translateX(0); }
   .main { margin-left: 0; }
   .grid-2, .grid-3 { grid-template-columns: 1fr; }
-  .page-header, .page-content { padding-left: 16px; padding-right: 16px; }
+  .page-header { padding: 60px 16px 0; }
+  .page-content { padding: 20px 16px 48px; }
+  .filter-bar { gap: 8px; }
+  .filter-bar select, .filter-bar input { width: 100% !important; }
+  .stat-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .modal { margin: 12px; max-width: calc(100% - 24px); }
+  .timer-float-widget { bottom: 16px; right: 16px; padding: 8px 14px; }
+  .task-item { flex-wrap: wrap; }
+  .table-responsive { overflow-x: auto; }
 }
 </style>
 {% block extra_style %}{% endblock %}
@@ -338,7 +369,9 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 <body>
 
 {% if user %}
-<aside class="sidebar">
+<button class="hamburger" id="hamburgerBtn" aria-label="Abrir menu">☰</button>
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+<aside class="sidebar" id="sidebar">
   <div class="sidebar-logo">
     <div class="logo-icon">🍅</div>
     <div class="logo-text">Pomodoro<br><span>Foco</span></div>
@@ -365,6 +398,12 @@ textarea.form-control { resize: vertical; min-height: 80px; }
     <a href="/configuracoes" class="nav-link {% if '/configuracoes' in request.path %}active{% endif %}">
       <span class="icon">⚙️</span> Configurações
     </a>
+    {% if user.is_admin %}
+    <div class="nav-section">Admin</div>
+    <a href="/admin" class="nav-link {% if '/admin' in request.path %}active{% endif %}">
+      <span class="icon">🛡️</span> Painel Admin
+    </a>
+    {% endif %}
   </nav>
   <div class="sidebar-bottom">
     <div class="user-card">
@@ -442,5 +481,17 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 {% endif %}
 
 {% block scripts %}{% endblock %}
+<script>
+(function(){
+  var btn = document.getElementById('hamburgerBtn');
+  var sidebar = document.getElementById('sidebar');
+  var overlay = document.getElementById('sidebarOverlay');
+  if (!btn) return;
+  function open(){ sidebar.classList.add('open'); overlay.classList.add('active'); }
+  function close(){ sidebar.classList.remove('open'); overlay.classList.remove('active'); }
+  btn.addEventListener('click', function(){ sidebar.classList.contains('open') ? close() : open(); });
+  overlay.addEventListener('click', close);
+})();
+</script>
 </body>
 </html>
