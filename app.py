@@ -1,14 +1,30 @@
 import sqlite3
 import json
 import os
+import re
+import secrets
 from datetime import datetime, timedelta, date
 from functools import wraps
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, g
-from werkzeug.security import generate_password_hash, check_password_hash
+from authlib.integrations.flask_client import OAuth
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = 'pomodoro-secret-key-2024-muito-seguro'
+app.secret_key = os.environ.get('SECRET_KEY') or secrets.token_hex(32)
 DATABASE = os.path.join(os.path.dirname(__file__), 'pomodoro.db')
+
+# ─────────────────────── OAUTH ───────────────────────
+
+oauth = OAuth(app)
+oauth.register(
+    name='google',
+    client_id=os.environ.get('GOOGLE_CLIENT_ID'),
+    client_secret=os.environ.get('GOOGLE_CLIENT_SECRET'),
+    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+    client_kwargs={'scope': 'openid email profile'},
+)
 
 # ─────────────────────── DATABASE ───────────────────────
 
@@ -45,7 +61,7 @@ def init_db():
                 long_break_interval INTEGER DEFAULT 4,
                 daily_goal INTEGER DEFAULT 8,
                 weekly_goal INTEGER DEFAULT 40,
-                dark_mode INTEGER DEFAULT 0,
+                dark_mode INTEGER DEFAULT 1,
                 sound_enabled INTEGER DEFAULT 1
             );
 
@@ -99,6 +115,9 @@ def init_db():
         if 'is_active' not in existing_cols:
             db.execute("ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1")
             db.commit()
+        # Garante dark_mode=1 para quem ainda tem o valor padrão antigo (0)
+        db.execute("UPDATE users SET dark_mode = 1 WHERE dark_mode = 0")
+        db.commit()
 
 # ─────────────────────── AUTH HELPERS ───────────────────────
 
@@ -135,58 +154,86 @@ def index():
         return redirect(url_for('dashboard'))
     return redirect(url_for('login'))
 
-@app.route('/login', methods=['GET', 'POST'])
+@app.route('/login')
 def login():
-    if request.method == 'POST':
-        email = request.form.get('email', '').strip()
-        password = request.form.get('password', '')
-        db = get_db()
-        user = db.execute('SELECT * FROM users WHERE email = ?', [email]).fetchone()
-        if user and check_password_hash(user['password_hash'], password):
-            if not user['is_active']:
-                return render_template('login.html', error='Conta desativada. Contate o administrador.')
-            session['user_id'] = user['id']
-            session['username'] = user['username']
-            session['is_admin'] = bool(user['is_admin'])
-            return redirect(url_for('dashboard'))
-        return render_template('login.html', error='E-mail ou senha inválidos.')
+    if 'user_id' in session:
+        return redirect(url_for('dashboard'))
     return render_template('login.html')
 
-
-@app.route('/cadastro', methods=['GET', 'POST'])
-def register():
-    if request.method == 'POST':
-        username = request.form.get('username', '').strip()
-        email = request.form.get('email', '').strip()
-        password = request.form.get('password', '')
-        confirm = request.form.get('confirm_password', '')
-        if not username or not email or not password:
-            return render_template('register.html', error='Todos os campos são obrigatórios.')
-        if password != confirm:
-            return render_template('register.html', error='As senhas não coincidem.')
-        if len(password) < 6:
-            return render_template('register.html', error='A senha deve ter pelo menos 6 caracteres.')
-        db = get_db()
-        try:
-            db.execute('INSERT INTO users (username, email, password_hash) VALUES (?,?,?)',
-                       [username, email, generate_password_hash(password)])
-            db.commit()
-            user = db.execute('SELECT * FROM users WHERE email = ?', [email]).fetchone()
-            # Create default project
-            db.execute('INSERT INTO projects (user_id, name, color) VALUES (?,?,?)',
-                       [user['id'], 'Geral', '#e74c3c'])
-            db.commit()
-            session['user_id'] = user['id']
-            session['username'] = username
-            return redirect(url_for('dashboard'))
-        except sqlite3.IntegrityError:
-            return render_template('register.html', error='E-mail ou usuário já cadastrado.')
-    return render_template('register.html')
 
 @app.route('/logout')
 def logout():
     session.clear()
     return redirect(url_for('login'))
+
+
+# ─────────────────────── OAUTH ROUTES ───────────────────────
+
+def _oauth_login_or_register(email, nome):
+    """Login ou cadastro automático via OAuth."""
+    if not email:
+        return redirect(url_for('login'))
+
+    email = email.strip().lower()
+    db = get_db()
+    user = db.execute('SELECT * FROM users WHERE email = ?', [email]).fetchone()
+
+    if not email.endswith('@secday.com.br'):
+        return redirect(url_for('login', error='acesso_negado'))
+
+    if not user:
+        username = (nome or email.split('@')[0])[:30]
+        username = re.sub(r'[^a-zA-Z0-9_]', '', username) or 'user'
+
+        base, counter = username, 1
+        while db.execute('SELECT id FROM users WHERE username = ?', [username]).fetchone():
+            username = f"{base}{counter}"
+            counter += 1
+
+        password_placeholder = 'oauth:' + secrets.token_hex(32)
+
+        try:
+            db.execute(
+                'INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)',
+                [username, email, password_placeholder]
+            )
+            db.commit()
+            user = db.execute('SELECT * FROM users WHERE email = ?', [email]).fetchone()
+            db.execute('INSERT INTO projects (user_id, name, color) VALUES (?,?,?)',
+                       [user['id'], 'Geral', '#e74c3c'])
+            db.commit()
+        except Exception as e:
+            app.logger.error(f"OAuth register error: {e}")
+            return redirect(url_for('login'))
+
+        user = db.execute('SELECT * FROM users WHERE email = ?', [email]).fetchone()
+
+    if not user['is_active']:
+        return redirect(url_for('login'))
+
+    session['user_id'] = user['id']
+    session['username'] = user['username']
+    session['is_admin'] = bool(user['is_admin'])
+    return redirect(url_for('dashboard'))
+
+
+@app.route('/auth/google')
+def auth_google():
+    redirect_uri = url_for('auth_google_callback', _external=True)
+    return oauth.google.authorize_redirect(redirect_uri)
+
+
+@app.route('/auth/google/callback')
+def auth_google_callback():
+    try:
+        token = oauth.google.authorize_access_token()
+        user_info = token.get('userinfo') or oauth.google.userinfo()
+        email = user_info.get('email')
+        nome = user_info.get('name', '')
+    except Exception as e:
+        app.logger.warning(f"Google OAuth error: {e}")
+        return redirect(url_for('login'))
+    return _oauth_login_or_register(email, nome)
 
 # ─────────────────────── DASHBOARD ───────────────────────
 
@@ -711,13 +758,6 @@ def settings():
             db.execute('UPDATE users SET dark_mode=?, sound_enabled=? WHERE id=?',
                        [dark, sound, session['user_id']])
             db.commit()
-        elif action == 'password':
-            current_pw = request.form.get('current_password', '')
-            new_pw = request.form.get('new_password', '')
-            if check_password_hash(user['password_hash'], current_pw) and len(new_pw) >= 6:
-                db.execute('UPDATE users SET password_hash=? WHERE id=?',
-                           [generate_password_hash(new_pw), session['user_id']])
-                db.commit()
         user = current_user()
         return render_template('settings.html', user=user, success=True)
     return render_template('settings.html', user=user)
@@ -760,18 +800,6 @@ def admin_toggle_active(target_id):
     if not target or target_id == session['user_id']:
         return redirect(url_for('admin_panel'))
     db.execute('UPDATE users SET is_active=? WHERE id=?', [0 if target['is_active'] else 1, target_id])
-    db.commit()
-    return redirect(url_for('admin_panel'))
-
-@app.route('/admin/usuario/<int:target_id>/reset-senha', methods=['POST'])
-@admin_required
-def admin_reset_password(target_id):
-    new_pw = request.form.get('new_password', '').strip()
-    if len(new_pw) < 6:
-        return redirect(url_for('admin_panel'))
-    db = get_db()
-    db.execute('UPDATE users SET password_hash=? WHERE id=?',
-               [generate_password_hash(new_pw), target_id])
     db.commit()
     return redirect(url_for('admin_panel'))
 

@@ -88,14 +88,14 @@
           <div class="tomato-dot {% if i < task.completed_pomodoros %}filled{% endif %}"></div>
           {% endfor %}
         </div>
-        <div style="font-family:'Space Mono',monospace;font-size:11px;color:var(--text3);margin-top:4px">
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text3);margin-top:4px">
           {{ task.completed_pomodoros }}/{{ task.estimated_pomodoros }}
         </div>
       </div>
 
       <!-- Actions -->
       <div style="display:flex;gap:6px;flex-shrink:0">
-        <a href="/timer" class="btn btn-ghost btn-sm" title="Focar no timer">▶</a>
+        <a href="/timer?task={{ task.id }}" class="btn btn-ghost btn-sm" title="Focar no timer">▶</a>
         <button class="btn btn-ghost btn-sm js-register-time" title="Registrar tempo manualmente"
                 data-task-id="{{ task.id }}" data-task-name="{{ task.title | e }}">⏱</button>
         <form method="POST" action="/tarefas/{{ task.id }}/excluir" style="margin:0" onsubmit="return confirm('Excluir esta tarefa?')">
@@ -233,7 +233,7 @@
             <input type="radio" name="mode" value="pomodoros" id="mode-pom" checked
                    style="display:none" onchange="toggleRegisterMode()">
             <div class="mode-btn" id="btn-mode-pom"
-                 style="padding:10px;border-radius:10px;border:2px solid var(--red);background:rgba(230,57,70,0.08);text-align:center">
+                 style="padding:10px;border-radius:10px;border:2px solid var(--red);background:rgba(16,185,129,0.1);text-align:center">
               <div style="font-size:20px">🍅</div>
               <div style="font-size:12px;font-weight:700;color:var(--red);margin-top:4px">Pomodoros</div>
             </div>
@@ -258,7 +258,7 @@
                   onclick="changeQty(-1)" style="width:36px;height:36px;padding:0;font-size:18px;flex-shrink:0">−</button>
           <input type="number" name="quantity" id="qty-input"
                  class="form-control" value="1" min="1" max="500"
-                 style="text-align:center;font-size:22px;font-weight:700;font-family:'Space Mono',monospace">
+                 style="text-align:center;font-size:22px;font-weight:700;font-family:var(--font-mono)">
           <button type="button" class="btn btn-secondary btn-sm"
                   onclick="changeQty(1)" style="width:36px;height:36px;padding:0;font-size:18px;flex-shrink:0">+</button>
         </div>
@@ -336,7 +336,7 @@ function toggleRegisterMode() {
   const isPom = document.getElementById('mode-pom').checked;
   // Visual toggle
   document.getElementById('btn-mode-pom').style.borderColor = isPom ? 'var(--red)' : 'var(--border)';
-  document.getElementById('btn-mode-pom').style.background  = isPom ? 'rgba(230,57,70,0.08)' : 'transparent';
+  document.getElementById('btn-mode-pom').style.background  = isPom ? 'rgba(16,185,129,0.1)' : 'transparent';
   document.querySelector('#btn-mode-pom div:last-child').style.color = isPom ? 'var(--red)' : 'var(--text3)';
   document.getElementById('btn-mode-min').style.borderColor = !isPom ? 'var(--blue)' : 'var(--border)';
   document.getElementById('btn-mode-min').style.background  = !isPom ? 'rgba(72,149,239,0.08)' : 'transparent';

@@ -3,10 +3,10 @@
 {% block extra_style %}
 <style>
 .admin-badge { display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:100px;font-size:11px;font-weight:700; }
-.admin-badge.admin { background:#ede9fe;color:#6d28d9; }
-.admin-badge.active { background:#d1fae5;color:#065f46; }
-.admin-badge.inactive { background:#fee2e2;color:#dc2626; }
-.admin-badge.user { background:var(--bg2);color:var(--text3); }
+.admin-badge.admin    { background:rgba(139,92,246,.18); color:var(--accent-purple); border:1px solid rgba(139,92,246,.3); }
+.admin-badge.active   { background:rgba(16,185,129,.18);  color:var(--accent-green);  border:1px solid rgba(16,185,129,.3); }
+.admin-badge.inactive { background:rgba(239,68,68,.18);   color:var(--accent-red);    border:1px solid rgba(239,68,68,.3); }
+.admin-badge.user     { background:var(--bg-secondary); color:var(--text-muted); border:1px solid var(--border-color); }
 .user-row td { vertical-align:middle; }
 .stat-mini { font-size:12px;color:var(--text3); }
 .stat-mini strong { color:var(--text);font-size:14px; }
@@ -75,7 +75,7 @@
             <!-- Name + email -->
             <td>
               <div style="display:flex;align-items:center;gap:10px">
-                <div class="user-avatar" style="background:{{ '#e63946' if u.is_admin else '#4895ef' }}">
+                <div class="user-avatar" style="background:{{ '#8b5cf6' if u.is_admin else '#3b82f6' }}">
                   {{ u.username[0].upper() }}
                 </div>
                 <div>

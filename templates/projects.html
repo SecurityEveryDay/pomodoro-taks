@@ -1,5 +1,43 @@
 {% extends "base.html" %}
 {% block title %}Projetos — PomodoroFoco{% endblock %}
+{% block extra_style %}
+<style>
+.color-swatches {
+  display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px;
+}
+.color-swatch {
+  width: 32px; height: 32px; border-radius: 50%;
+  cursor: pointer; border: 3px solid transparent;
+  transition: transform 0.15s, border-color 0.15s;
+  position: relative; flex-shrink: 0;
+}
+.color-swatch:hover { transform: scale(1.15); }
+.color-swatch.selected {
+  border-color: var(--text-primary);
+  transform: scale(1.1);
+}
+.color-swatch.selected::after {
+  content: '✓';
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 700; color: #fff;
+  text-shadow: 0 1px 2px rgba(0,0,0,.5);
+}
+.color-preview {
+  display: flex; align-items: center; gap: 10px; margin-top: 12px;
+  padding: 8px 12px;
+  background: var(--bg-secondary); border-radius: var(--radius);
+  border: 1px solid var(--border-color);
+}
+.color-preview-dot {
+  width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0;
+  transition: background 0.2s;
+}
+.color-preview-hex {
+  font-family: var(--font-mono); font-size: 0.82rem; color: var(--text-secondary);
+}
+</style>
+{% endblock %}
 {% block content %}
 <div class="page-header">
   <div>
@@ -29,15 +67,15 @@
       <div class="card-body">
         <div style="display:flex;justify-content:space-between;margin-bottom:12px">
           <div style="text-align:center">
-            <div style="font-size:24px;font-weight:700;font-family:'Space Mono',monospace;color:var(--text)">{{ p.total_tasks or 0 }}</div>
+            <div style="font-size:24px;font-weight:700;font-family:var(--font-mono);color:var(--text)">{{ p.total_tasks or 0 }}</div>
             <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px">Tarefas</div>
           </div>
           <div style="text-align:center">
-            <div style="font-size:24px;font-weight:700;font-family:'Space Mono',monospace;color:var(--green)">{{ p.completed_tasks or 0 }}</div>
+            <div style="font-size:24px;font-weight:700;font-family:var(--font-mono);color:var(--green)">{{ p.completed_tasks or 0 }}</div>
             <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px">Concluídas</div>
           </div>
           <div style="text-align:center">
-            <div style="font-size:24px;font-weight:700;font-family:'Space Mono',monospace;color:var(--red)">{{ p.total_pomodoros or 0 }}</div>
+            <div style="font-size:24px;font-weight:700;font-family:var(--font-mono);color:var(--red)">{{ p.total_pomodoros or 0 }}</div>
             <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px">🍅</div>
           </div>
         </div>
@@ -74,15 +112,12 @@
       </div>
       <div class="form-group">
         <label class="form-label">Cor</label>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">
-          {% for color in ['#e63946','#f77f00','#ffd166','#2dc653','#4895ef','#7b2d8b','#ef476f','#06d6a0'] %}
-          <label style="cursor:pointer">
-            <input type="radio" name="color" value="{{ color }}" {% if loop.first %}checked{% endif %} style="display:none">
-            <div style="width:28px;height:28px;border-radius:50%;background:{{ color }};transition:transform 0.1s" onclick="this.parentNode.querySelector('input').checked=true;document.querySelectorAll('.color-radio').forEach(e=>e.style.outline='none');this.style.outline='3px solid var(--text)';" class="color-radio"></div>
-          </label>
-          {% endfor %}
+        <input type="hidden" name="color" id="create-color-input" value="#10b981">
+        <div class="color-swatches" id="create-swatches"></div>
+        <div class="color-preview">
+          <div class="color-preview-dot" id="create-preview-dot"></div>
+          <span class="color-preview-hex" id="create-preview-hex"></span>
         </div>
-        <input type="text" name="color" id="custom-color" class="form-control" placeholder="#000000" style="margin-top:10px;font-family:'Space Mono',monospace">
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px">
         <button type="button" class="btn btn-secondary" onclick="closeModal('modal-create')">Cancelar</button>
@@ -103,7 +138,12 @@
       </div>
       <div class="form-group">
         <label class="form-label">Cor</label>
-        <input type="text" name="color" id="edit-color" class="form-control" style="font-family:'Space Mono',monospace">
+        <input type="hidden" name="color" id="edit-color-input">
+        <div class="color-swatches" id="edit-swatches"></div>
+        <div class="color-preview">
+          <div class="color-preview-dot" id="edit-preview-dot"></div>
+          <span class="color-preview-hex" id="edit-preview-hex"></span>
+        </div>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px">
         <button type="button" class="btn btn-secondary" onclick="closeModal('modal-edit')">Cancelar</button>
@@ -115,16 +155,59 @@
 {% endblock %}
 {% block scripts %}
 <script>
+const PALETTE = [
+  '#10b981','#3b82f6','#8b5cf6','#ef4444',
+  '#f59e0b','#06d6a0','#ec4899','#f77f00',
+  '#64748b','#0ea5e9','#a855f7','#e11d48',
+];
+
+function buildSwatches(containerId, inputId, previewDotId, previewHexId, selectedColor) {
+  const container  = document.getElementById(containerId);
+  const input      = document.getElementById(inputId);
+  const previewDot = document.getElementById(previewDotId);
+  const previewHex = document.getElementById(previewHexId);
+
+  container.innerHTML = '';
+
+  // Garante que a cor atual está na paleta (adiciona se for custom)
+  const palette = PALETTE.includes(selectedColor)
+    ? PALETTE
+    : [selectedColor, ...PALETTE];
+
+  palette.forEach(color => {
+    const el = document.createElement('div');
+    el.className = 'color-swatch' + (color === selectedColor ? ' selected' : '');
+    el.style.background = color;
+    el.title = color;
+    el.addEventListener('click', () => {
+      container.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected'));
+      el.classList.add('selected');
+      input.value = color;
+      previewDot.style.background = color;
+      previewHex.textContent = color;
+    });
+    container.appendChild(el);
+  });
+
+  previewDot.style.background = selectedColor;
+  previewHex.textContent = selectedColor;
+}
+
 function openModal(id) { document.getElementById(id).classList.add('active'); }
 function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
 document.querySelectorAll('.modal-overlay').forEach(el => {
   el.addEventListener('click', e => { if (e.target === el) el.classList.remove('active'); });
 });
+
 function editProject(id, name, color) {
   document.getElementById('edit-name').value = name;
-  document.getElementById('edit-color').value = color;
   document.getElementById('editForm').action = '/projetos/' + id + '/editar';
+  buildSwatches('edit-swatches', 'edit-color-input', 'edit-preview-dot', 'edit-preview-hex', color);
   openModal('modal-edit');
 }
+
+// Inicializa create com a primeira cor da paleta
+buildSwatches('create-swatches', 'create-color-input', 'create-preview-dot', 'create-preview-hex', PALETTE[0]);
 </script>
 {% endblock %}

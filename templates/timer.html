@@ -39,7 +39,7 @@
 .timer-progress.break-long  { stroke: var(--green); }
 .timer-display { position: absolute; text-align: center; }
 .timer-time {
-  font-family: 'Space Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 64px; font-weight: 700; color: var(--text);
   line-height: 1; letter-spacing: -2px;
 }
@@ -51,7 +51,7 @@
   width: 72px; height: 72px; border-radius: 50%;
   background: var(--red); border: none; color: white;
   font-size: 28px; cursor: pointer; transition: all 0.15s;
-  box-shadow: 0 4px 20px rgba(230,57,70,0.4);
+  box-shadow: 0 4px 20px rgba(16,185,129,0.35);
 }
 .btn-timer-main:hover { transform: scale(1.08); }
 .btn-timer-main.paused { background: var(--text2); box-shadow: none; }
@@ -146,12 +146,12 @@
   transition: background 0.1s;
 }
 .task-item-select:hover { background: var(--bg2); }
-.task-item-select.selected { background: rgba(230,57,70,0.07); border-left-color: var(--red); }
+.task-item-select.selected { background: rgba(16,185,129,0.1); border-left-color: var(--red); }
 .task-item-select:last-child { border-bottom: none; }
 .task-select-info { flex: 1; min-width: 0; }
 .task-select-title { font-size: 14px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .task-select-meta { font-size: 11px; color: var(--text3); margin-top: 2px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-.task-select-poms { font-family: 'Space Mono', monospace; font-size: 12px; color: var(--red); font-weight: 700; flex-shrink: 0; }
+.task-select-poms { font-family: var(--font-mono); font-size: 12px; color: var(--red); font-weight: 700; flex-shrink: 0; }
 
 .task-empty-msg { padding: 24px; text-align: center; color: var(--text3); font-size: 14px; display: none; }
 
@@ -179,7 +179,7 @@
 }
 .timer-float-widget:hover { transform: scale(1.04); }
 .timer-float-widget.show { display: flex; }
-.float-time { font-family: 'Space Mono', monospace; font-weight: 700; font-size: 16px; }
+.float-time { font-family: var(--font-mono); font-weight: 700; font-size: 16px; }
 .float-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: blink 1.2s ease-in-out infinite; }
 @keyframes blink { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
 </style>
@@ -209,7 +209,10 @@
   </div>
 
   <div class="timer-status" id="timerStatus">Pronto para começar</div>
-  <div class="pomodoro-count" id="pomodoroCount"></div>
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px">
+    <div class="pomodoro-count" id="pomodoroCount" style="margin-bottom:0" title="Clique num dot para ajustar o ciclo"></div>
+    <button onclick="resetCycle()" title="Resetar ciclo" style="background:none;border:1px solid var(--border-color);border-radius:6px;color:var(--text-muted);cursor:pointer;font-size:14px;padding:3px 8px;transition:all 0.15s;line-height:1" onmouseover="this.style.borderColor='var(--accent-red)';this.style.color='var(--accent-red)'" onmouseout="this.style.borderColor='var(--border-color)';this.style.color='var(--text-muted)'">↺</button>
+  </div>
 
   <div class="timer-controls">
     <button class="btn-timer-side" onclick="resetTimer()" title="Resetar">↺</button>
@@ -438,6 +441,10 @@ function render() {
   for (let i=0;i<CFG.interval;i++) {
     const d = document.createElement('div');
     d.className = 'pom-dot'+(i<S.pomCycle?' done':'');
+    d.style.cursor = 'pointer';
+    d.title = i < S.pomCycle ? `Reduzir para ${i} pomodoro(s)` : `Marcar ${i+1} pomodoro(s)`;
+    const idx = i;
+    d.addEventListener('click', () => setCycle(idx));
     dc.appendChild(d);
   }
 
@@ -607,6 +614,19 @@ function switchMode(m) {
   S.startedAt = null;
 }
 
+function setCycle(idx) {
+  // Clique no dot i: se já está marcado (i < pomCycle), reduz para i; senão avança para i+1
+  S.pomCycle = (idx < S.pomCycle) ? idx : idx + 1;
+  render();
+  persist();
+}
+
+function resetCycle() {
+  S.pomCycle = 0;
+  render();
+  persist();
+}
+
 function setMode(m) {
   if (S.running) return;
   if (S.sessionId) {
@@ -733,5 +753,21 @@ if (S.taskId && !document.getElementById('task-'+S.taskId)) {
 render();
 applyFilters();
 initTaskClicks();
+
+// Pré-seleciona tarefa vinda de /tarefas?task=ID
+(function(){
+  const taskId = new URLSearchParams(location.search).get('task');
+  if (!taskId) return;
+  const row = document.getElementById('task-' + taskId);
+  if (!row) return;
+  selectTask(
+    parseInt(row.dataset.id),
+    row.dataset.name,
+    row.dataset.color
+  );
+  row.scrollIntoView({ block: 'nearest' });
+  // Limpa o param da URL sem recarregar
+  history.replaceState(null, '', '/timer');
+})();
 </script>
 {% endblock %}
